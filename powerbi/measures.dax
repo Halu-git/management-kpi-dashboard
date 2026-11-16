@@ -1,0 +1,199 @@
+// ============================================================
+// 経営KPI・予実管理ダッシュボード ― DAXメジャー集
+// 前提: powerbi/model.md のテーブル構成（FactMonthlyPL が主ファクト）。
+// 金額は千円。達成率・前年比・利益率は小数（表示側で % 書式）。
+// データはデモ（合成）データ。実務では FactMonthlyPL を会計データに
+// 差し替えるだけで全メジャーがそのまま動く。
+// ============================================================
+
+// ---------- 基本集計 ----------
+売上高 予算 =
+CALCULATE ( SUM ( FactMonthlyPL[budget_k_yen] ), DimAccount[account] = "売上高" )
+
+売上高 実績 =
+CALCULATE ( SUM ( FactMonthlyPL[actual_k_yen] ), DimAccount[account] = "売上高" )
+
+売上原価 予算 =
+CALCULATE ( SUM ( FactMonthlyPL[budget_k_yen] ), DimAccount[account] = "売上原価" )
+
+売上原価 実績 =
+CALCULATE ( SUM ( FactMonthlyPL[actual_k_yen] ), DimAccount[account] = "売上原価" )
+
+販管費 予算 =
+CALCULATE ( SUM ( FactMonthlyPL[budget_k_yen] ), DimAccount[account] = "販管費" )
+
+販管費 実績 =
+CALCULATE ( SUM ( FactMonthlyPL[actual_k_yen] ), DimAccount[account] = "販管費" )
+
+// ---------- 利益（派生） ----------
+粗利 予算 = [売上高 予算] - [売上原価 予算]
+
+粗利 実績 = [売上高 実績] - [売上原価 実績]
+
+営業利益 予算 = [粗利 予算] - [販管費 予算]
+
+営業利益 実績 = [粗利 実績] - [販管費 実績]
+
+// ---------- 予実差異・達成率 ----------
+売上高 差異 = [売上高 実績] - [売上高 予算]
+
+売上高 達成率 = DIVIDE ( [売上高 実績], [売上高 予算] )
+
+営業利益 差異 = [営業利益 実績] - [営業利益 予算]
+
+営業利益 達成率 = DIVIDE ( [営業利益 実績], [営業利益 予算] )
+
+粗利率 実績 = DIVIDE ( [粗利 実績], [売上高 実績] )
+
+営業利益率 実績 = DIVIDE ( [営業利益 実績], [売上高 実績] )
+
+原価率 実績 = DIVIDE ( [売上原価 実績], [売上高 実績] )
+
+// ---------- 累計（会計年度内・4月起点） ----------
+// DimDate[fiscal_month_index]（4月=1〜3月=12）で当年・当月までの累計を取る。
+売上高 累計実績 =
+VAR CurIdx = MAX ( DimDate[fiscal_month_index] )
+RETURN
+    CALCULATE (
+        [売上高 実績],
+        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] <= CurIdx )
+    )
+
+売上高 累計予算 =
+VAR CurIdx = MAX ( DimDate[fiscal_month_index] )
+RETURN
+    CALCULATE (
+        [売上高 予算],
+        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] <= CurIdx )
+    )
+
+売上高 累計達成率 = DIVIDE ( [売上高 累計実績], [売上高 累計予算] )
+
+// ---------- 前年比（前年度の同期） ----------
+// 年度は DimDate[fiscal_year] のスライサー選択を前提に、前年同月／前年同期間で比較する。
+売上高 前年実績 =
+CALCULATE (
+    [売上高 実績],
+    FILTER (
+        ALL ( DimDate ),
+        DimDate[fiscal_year] = MAX ( DimDate[fiscal_year] ) - 1
+            && DimDate[fiscal_month_index] = MAX ( DimDate[fiscal_month_index] )
+    )
+)
+
+売上高 前年比 = DIVIDE ( [売上高 実績], [売上高 前年実績] ) - 1
+
+売上高 累計前年比 =
+VAR CurIdx = MAX ( DimDate[fiscal_month_index] )
+VAR CurFY = MAX ( DimDate[fiscal_year] )
+RETURN
+    DIVIDE (
+        [売上高 累計実績],
+        CALCULATE (
+            [売上高 実績],
+            FILTER (
+                ALL ( DimDate ),
+                DimDate[fiscal_year] = CurFY - 1
+                    && DimDate[fiscal_month_index] <= CurIdx
+            )
+        )
+    ) - 1
+
+// ---------- 着地予想（ランサーズ/CW案件の要件：DAXによる着地予想） ----------
+// 前提：スライサーで対象の会計年度が選択されていること。
+// 「実績のある最終月」までを実績累計、それ以降の月を残期間として動的に判定する。
+最終実績月インデックス =
+CALCULATE (
+    MAX ( DimDate[fiscal_month_index] ),
+    FILTER ( ALL ( FactMonthlyPL ), NOT ISBLANK ( FactMonthlyPL[actual_k_yen] ) )
+)
+
+売上高 実績累計（年度内） =
+VAR LastIdx = [最終実績月インデックス]
+RETURN
+    CALCULATE (
+        [売上高 実績],
+        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] <= LastIdx )
+    )
+
+売上高 残期間予算 =
+VAR LastIdx = [最終実績月インデックス]
+RETURN
+    CALCULATE (
+        [売上高 予算],
+        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] > LastIdx )
+    )
+
+売上高 通年予算 =
+CALCULATE ( [売上高 予算], ALL ( DimDate ) )
+
+// 着地予想（予算ベース）＝ 実績累計 ＋ 残期間予算
+売上高 着地予想 =
+[売上高 実績累計（年度内）] + [売上高 残期間予算]
+
+売上高 着地達成率見込 = DIVIDE ( [売上高 着地予想], [売上高 通年予算] )
+
+// 直近3か月の達成率（着地の調整シナリオ用）
+売上高 直近3か月達成率 =
+VAR LastIdx = [最終実績月インデックス]
+RETURN
+    DIVIDE (
+        CALCULATE (
+            [売上高 実績],
+            FILTER (
+                ALL ( DimDate ),
+                DimDate[fiscal_month_index] > LastIdx - 3
+                    && DimDate[fiscal_month_index] <= LastIdx
+            )
+        ),
+        CALCULATE (
+            [売上高 予算],
+            FILTER (
+                ALL ( DimDate ),
+                DimDate[fiscal_month_index] > LastIdx - 3
+                    && DimDate[fiscal_month_index] <= LastIdx
+            )
+        )
+    )
+
+// 着地予想（達成率調整）＝ 実績累計 ＋ 残期間予算 × 直近3か月達成率
+売上高 着地予想（調整） =
+[売上高 実績累計（年度内）] + [売上高 残期間予算] * [売上高 直近3か月達成率]
+
+// 営業利益の着地（予算ベースのみ）
+営業利益 実績累計（年度内） =
+VAR LastIdx = [最終実績月インデックス]
+RETURN
+    CALCULATE (
+        [営業利益 実績],
+        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] <= LastIdx )
+    )
+
+営業利益 残期間予算 =
+VAR LastIdx = [最終実績月インデックス]
+RETURN
+    CALCULATE (
+        [営業利益 予算],
+        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] > LastIdx )
+    )
+
+営業利益 着地予想 =
+[営業利益 実績累計（年度内）] + [営業利益 残期間予算]
+
+// ---------- 表示補助 ----------
+// 売上構成比（部門の全体に占める割合。部門フィルタ内で計算）
+売上高 構成比 =
+DIVIDE (
+    [売上高 実績],
+    CALCULATE ( [売上高 実績], ALL ( DimDepartment ) )
+)
+
+// ============================================================
+// 実データへの差し替え手順（実務案件向け）
+// 1. 会計ソフトの月次PL（部門別）を budget/actual の2列に整形し、
+//    monthly_pl_by_department.csv と同じ列構成で FactMonthlyPL に読む。
+// 2. 予算は年度予算マスタ（月次配分済み）から同形式で用意する。
+// 3. DimDate は対象期間に合わせて再生成する。is_actual_available は
+//    締め済みの最終月に合わせて更新する（着地メジャーは actual の
+//    有無で残期間を判定するため、未締め月の actual は空欄にすること）。
+// ============================================================
