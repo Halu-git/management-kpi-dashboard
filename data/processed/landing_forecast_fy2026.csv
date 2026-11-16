@@ -1,0 +1,6 @@
+scope,sales_ytd_actual_k,sales_remaining_budget_k,sales_landing_base_k,sales_landing_adjusted_k,sales_full_year_budget_k,landing_achievement_base_pct,landing_achievement_adjusted_pct,op_ytd_actual_k,op_remaining_budget_k,op_landing_base_k,op_full_year_budget_k
+全社,707458,570657,1278115,1228125,1334304,95.79,92.04,49156,55226,104382,132261
+卸売部門,298608,235822,534430,513271,552994,96.64,92.82,18234,19040,37274,45936
+小売・店舗部門,177320,143636,320956,312290,333150,96.34,93.74,1043,8329,9372,19841
+EC部門,98416,82030,180446,172749,189850,95.05,90.99,23224,20133,43357,46701
+法人営業部門,133114,109169,242283,229923,258310,93.80,89.01,6655,7724,14379,19783
