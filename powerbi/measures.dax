@@ -4,6 +4,8 @@
 // 金額は千円。達成率・前年比・利益率は小数（表示側で % 書式）。
 // データはデモ（合成）データ。実務では FactMonthlyPL を会計データに
 // 差し替えるだけで全メジャーがそのまま動く。
+// 修正履歴: 2026-11-19 実機（Power BI Desktop）検証で、累計・着地系メジャーの
+// FILTER ( ALL ( DimDate ) ) が年度フィルターまで消していた欠陥を修正（年度固定を追加）。
 // ============================================================
 
 // ---------- 基本集計 ----------
@@ -51,21 +53,9 @@ CALCULATE ( SUM ( FactMonthlyPL[actual_k_yen] ), DimAccount[account] = "販管�
 
 // ---------- 累計（会計年度内・4月起点） ----------
 // DimDate[fiscal_month_index]（4月=1〜3月=12）で当年・当月までの累計を取る。
-売上高 累計実績 =
-VAR CurIdx = MAX ( DimDate[fiscal_month_index] )
-RETURN
-    CALCULATE (
-        [売上高 実績],
-        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] <= CurIdx )
-    )
+売上高 累計実績 = VAR CurIdx = MAX ( DimDate[fiscal_month_index] ) VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( [売上高 実績], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] <= CurIdx ) )
 
-売上高 累計予算 =
-VAR CurIdx = MAX ( DimDate[fiscal_month_index] )
-RETURN
-    CALCULATE (
-        [売上高 予算],
-        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] <= CurIdx )
-    )
+売上高 累計予算 = VAR CurIdx = MAX ( DimDate[fiscal_month_index] ) VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( [売上高 予算], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] <= CurIdx ) )
 
 売上高 累計達成率 = DIVIDE ( [売上高 累計実績], [売上高 累計予算] )
 
@@ -83,49 +73,25 @@ CALCULATE (
 
 売上高 前年比 = DIVIDE ( [売上高 実績], [売上高 前年実績] ) - 1
 
-売上高 累計前年比 =
-VAR CurIdx = MAX ( DimDate[fiscal_month_index] )
-VAR CurFY = MAX ( DimDate[fiscal_year] )
-RETURN
-    DIVIDE (
-        [売上高 累計実績],
-        CALCULATE (
-            [売上高 実績],
-            FILTER (
-                ALL ( DimDate ),
-                DimDate[fiscal_year] = CurFY - 1
-                    && DimDate[fiscal_month_index] <= CurIdx
-            )
-        )
-    ) - 1
+売上高 累計前年比 = VAR LastIdx = [最終実績月インデックス] VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN DIVIDE ( [売上高 実績累計（年度内）], CALCULATE ( [売上高 実績], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY - 1 && DimDate[fiscal_month_index] <= LastIdx ) ) ) - 1
+
+// ---------- YTD（実績月まででキャップした累計） ----------
+// KPIカードは月が未選択のため、通常の累計は年度末まで伸びてしまう。
+// 最終実績月インデックスでキャップしたYTD系をカード表示に使う。
+売上高 累計予算（実績月まで） = VAR LastIdx = [最終実績月インデックス] VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( [売上高 予算], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] <= LastIdx ) )
+
+売上高 YTD達成率 = DIVIDE ( [売上高 実績累計（年度内）], [売上高 累計予算（実績月まで）] )
 
 // ---------- 着地予想（ランサーズ/CW案件の要件：DAXによる着地予想） ----------
 // 前提：スライサーで対象の会計年度が選択されていること。
 // 「実績のある最終月」までを実績累計、それ以降の月を残期間として動的に判定する。
-最終実績月インデックス =
-CALCULATE (
-    MAX ( DimDate[fiscal_month_index] ),
-    FILTER ( ALL ( FactMonthlyPL ), NOT ISBLANK ( FactMonthlyPL[actual_k_yen] ) )
-)
+最終実績月インデックス = VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( MAX ( DimDate[fiscal_month_index] ), FILTER ( ALL ( FactMonthlyPL ), NOT ISBLANK ( FactMonthlyPL[actual_k_yen] ) ), DimDate[fiscal_year] = CurFY )
 
-売上高 実績累計（年度内） =
-VAR LastIdx = [最終実績月インデックス]
-RETURN
-    CALCULATE (
-        [売上高 実績],
-        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] <= LastIdx )
-    )
+売上高 実績累計（年度内） = VAR LastIdx = [最終実績月インデックス] VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( [売上高 実績], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] <= LastIdx ) )
 
-売上高 残期間予算 =
-VAR LastIdx = [最終実績月インデックス]
-RETURN
-    CALCULATE (
-        [売上高 予算],
-        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] > LastIdx )
-    )
+売上高 残期間予算 = VAR LastIdx = [最終実績月インデックス] VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( [売上高 予算], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] > LastIdx ) )
 
-売上高 通年予算 =
-CALCULATE ( [売上高 予算], ALL ( DimDate ) )
+売上高 通年予算 = VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( [売上高 予算], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY ) )
 
 // 着地予想（予算ベース）＝ 実績累計 ＋ 残期間予算
 売上高 着地予想 =
@@ -134,48 +100,16 @@ CALCULATE ( [売上高 予算], ALL ( DimDate ) )
 売上高 着地達成率見込 = DIVIDE ( [売上高 着地予想], [売上高 通年予算] )
 
 // 直近3か月の達成率（着地の調整シナリオ用）
-売上高 直近3か月達成率 =
-VAR LastIdx = [最終実績月インデックス]
-RETURN
-    DIVIDE (
-        CALCULATE (
-            [売上高 実績],
-            FILTER (
-                ALL ( DimDate ),
-                DimDate[fiscal_month_index] > LastIdx - 3
-                    && DimDate[fiscal_month_index] <= LastIdx
-            )
-        ),
-        CALCULATE (
-            [売上高 予算],
-            FILTER (
-                ALL ( DimDate ),
-                DimDate[fiscal_month_index] > LastIdx - 3
-                    && DimDate[fiscal_month_index] <= LastIdx
-            )
-        )
-    )
+売上高 直近3か月達成率 = VAR LastIdx = [最終実績月インデックス] VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN DIVIDE ( CALCULATE ( [売上高 実績], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] > LastIdx - 3 && DimDate[fiscal_month_index] <= LastIdx ) ), CALCULATE ( [売上高 予算], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] > LastIdx - 3 && DimDate[fiscal_month_index] <= LastIdx ) ) )
 
 // 着地予想（達成率調整）＝ 実績累計 ＋ 残期間予算 × 直近3か月達成率
 売上高 着地予想（調整） =
 [売上高 実績累計（年度内）] + [売上高 残期間予算] * [売上高 直近3か月達成率]
 
 // 営業利益の着地（予算ベースのみ）
-営業利益 実績累計（年度内） =
-VAR LastIdx = [最終実績月インデックス]
-RETURN
-    CALCULATE (
-        [営業利益 実績],
-        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] <= LastIdx )
-    )
+営業利益 実績累計（年度内） = VAR LastIdx = [最終実績月インデックス] VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( [営業利益 実績], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] <= LastIdx ) )
 
-営業利益 残期間予算 =
-VAR LastIdx = [最終実績月インデックス]
-RETURN
-    CALCULATE (
-        [営業利益 予算],
-        FILTER ( ALL ( DimDate ), DimDate[fiscal_month_index] > LastIdx )
-    )
+営業利益 残期間予算 = VAR LastIdx = [最終実績月インデックス] VAR CurFY = MAX ( DimDate[fiscal_year] ) RETURN CALCULATE ( [営業利益 予算], FILTER ( ALL ( DimDate ), DimDate[fiscal_year] = CurFY && DimDate[fiscal_month_index] > LastIdx ) )
 
 営業利益 着地予想 =
 [営業利益 実績累計（年度内）] + [営業利益 残期間予算]
