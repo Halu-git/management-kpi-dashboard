@@ -18,7 +18,7 @@
 
 - `excel/management_kpi_dashboard.xlsx` ― Excel完成品（11シート、ネイティブグラフ7点）
 - `excel/management_kpi_dashboard_en.xlsx` ― 英語版Excel（数値は日本語版と同一・全数値セル突合済み）
-- `powerbi/` ― Power BI設計パック（model.md / measures.dax / pages.md、4ページ設計、着地予想メジャー含む）
+- `powerbi/` ― Power BI設計パック（model.md / measures.dax / pages.md、4ページ設計、着地予想メジャー含む）＋実装済みスクリーンショット（images/）＋組み立て記録（BUILD_NOTES.md）
 - `data/processed/` ― tidy形式CSV 4ファイル（月次PL 部門別／全社、年度サマリー、着地予想）
 - `scripts/` ― データ生成・Excel生成スクリプト（generate_data.py / build_excel.py / build_excel_en.py）
 - `design.md` ― 設計メモ（目的・データ設計・採用/不採用理由・検証結果）
@@ -54,6 +54,22 @@
 - 部門別CSV→全社集計の再現（288セル）、年度サマリー再現（120セル）、着地予想再現（45セル）、ダッシュボード表示値照合（4件）： いずれも不一致0（各Excelの「検証ログ」シートに記録）
 - 英語版との数値突合： 4,030セル全件一致・不一致0、未翻訳文字列0（英語版の検証ログに記録）
 
+## Power BI 実装（2026-11-19 組み立て完了）
+
+設計パックどおりに Power BI Desktop で組み立て、Excel版と全数値を照合済みです（.pbix 本体は希望者に提供します）。
+
+**ページ1：KPI概要**
+![ページ1 KPI概要](powerbi/images/page1_kpi_overview.png)
+
+**ページ2：予実対比**
+![ページ2 予実対比](powerbi/images/page2_yojitsu.png)
+
+**ページ3：部門別**
+![ページ3 部門別](powerbi/images/page3_departments.png)
+
+**ページ4：着地予想**
+![ページ4 着地予想](powerbi/images/page4_landing.png)
+
 ## 実務での使い方
 
 会計ソフト（freee／マネーフォワード等）の月次PLエクスポートと予算マスタを、`monthly_pl_by_department.csv` と同じ列構成に整形して差し替えれば、同じダッシュボードが実データで動きます。差し替え手順は `powerbi/measures.dax` の末尾に記載しています。
@@ -67,3 +83,5 @@
 > ⚠ All figures are **demo (synthetic) data** — not the results of any real company. Generation rules are fully documented in `scripts/generate_data.py` (fixed seed, fully reproducible). Real company P/L data at monthly × department × budget/actual granularity is not public, which is why auditable synthetic data is used; listed-company filings, government corporate statistics and the GA4 demo account were considered and rejected for the reasons documented in `design.md` and the workbooks' Sources & Notes sheets.
 
 Key figures (FY2026, as of Oct 2026): sales actual (Apr–Oct) ¥707,458k, budget achievement 92.6%, YoY +1.7%, operating profit ¥49,156k (6.9% margin), sales landing forecast ¥1,278,115k (95.8% of the full-year budget). English reports are available — this sample itself is delivered bilingually: the English Excel edition contains identical figures (all 4,030 numeric cells cross-checked, zero mismatches).
+
+The Power BI version has also been built in Power BI Desktop following the design pack (4 pages: KPI overview / budget vs. actual / departments / landing forecast), with all figures reconciled against the Excel edition — see the screenshots under `powerbi/images/`. The .pbix file itself is available on request.
